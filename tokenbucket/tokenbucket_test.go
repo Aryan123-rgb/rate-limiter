@@ -2,6 +2,7 @@ package tokenbucket
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -9,6 +10,9 @@ import (
 
 	ratelimiter "github.com/Aryan123-rgb/rate-limiter"
 	"github.com/Aryan123-rgb/rate-limiter/memory"
+	redisStore "github.com/Aryan123-rgb/rate-limiter/redis"
+	"github.com/alicebob/miniredis/v2"
+	"github.com/redis/go-redis/v9"
 )
 
 type FakeClock struct {
@@ -23,145 +27,158 @@ func (f *FakeClock) Add(d time.Duration) {
 	f.currentTime = f.currentTime.Add(d)
 }
 
-func TestInitialBurstRequestsLocally(t *testing.T) {
+func TestTokenBucket_Backends(t *testing.T) {
+	mr, err := miniredis.Run()
+	assertError(t, err)
+	defer mr.Close()
+
+	redisClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+
+	tests := []struct {
+		name  string
+		store func() ratelimiter.Store
+	}{
+		{
+			name: "InMemory",
+			store: func() ratelimiter.Store {
+				return memory.NewInMemoryStore()
+			},
+		},
+		{
+			name: "Redis",
+			store: func() ratelimiter.Store {
+				mr.FlushAll()
+				return redisStore.NewRedisStore(redisClient)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Run("seq_burst_logic", func(t *testing.T) {
+				testSequentialBurstRequests(t, tt.store())
+			})
+
+			t.Run("concurrent_burst_logic", func(t *testing.T) {
+				testConcurrentBurstRequests(t, tt.store())
+			})
+
+			t.Run("refill_logic", func(t *testing.T) {
+				testRefillLogic(t, tt.store())
+			})
+		})
+	}
+}
+
+func testSequentialBurstRequests(t *testing.T, store ratelimiter.Store) {
+	clock := &FakeClock{currentTime: time.Now()}
+	ntb := NewTokenBucket(clock)
 	capacity, rate := 200, 10
 	cfg := ratelimiter.Config{
 		Capacity: float64(capacity),
 		Rate:     float64(rate),
 	}
 	ctx := context.Background()
+	key := "test_seq"
 
-	t.Run("sequential_requests_should_not_exceed_capacity", func(t *testing.T) {
-		clock := FakeClock{currentTime: time.Now()}
-		store := memory.NewInMemoryStore()
-		ntb := NewTokenBucket(&clock)
+	allowedCount := 0
 
-		key := "test_seq"
-		allowedCount := 0
-		// exhaust all the tokens initially
-		for i := 1; i <= capacity; i++ {
-			isAllowed, err := ntb.Allow(ctx, key, store, cfg)
-			assertErrAccessingLocalMemory(t, err)
-
-			if isAllowed {
-				allowedCount++
-			}
-		}
-		assertInvalidAmountRequestAccepeted(t, capacity, allowedCount)
-		
-		// all tokens are drained
+	// drain all tokens
+	// printStore(ctx, store, key)
+	for i := 1; i <= capacity; i++ {
 		isAllowed, err := ntb.Allow(ctx, key, store, cfg)
-
-		assertErrAccessingLocalMemory(t, err)
-		assertInvalidRequestAccepted(t, isAllowed)
-		assertInvalidTokenValue(t, store, key, ctx, capacity)
-	})
-
-	t.Run("concurrent_requests_should_not_exceed_capacity", func(t *testing.T) {
-		store := memory.NewInMemoryStore()
-		clock := FakeClock{currentTime: time.Now()}
-		ntb := NewTokenBucket(&clock)
-		key := "test_parallel"
-		totalRequests := capacity * 10
-		var allowedCount int32 // atomic counter
-
-		var wg sync.WaitGroup
-		wg.Add(totalRequests)
-
-		for i := 1; i <= totalRequests; i++ {
-			go func() {
-				defer wg.Done()
-				allowed, err := ntb.Allow(context.Background(), key, store, cfg)
-				assertErrAccessingLocalMemory(t, err)
-				if allowed {
-					atomic.AddInt32(&allowedCount, 1)
-				}
-			}()
+		// printStore(ctx, store, key)
+		assertError(t, err)
+		if isAllowed {
+			allowedCount++
 		}
-
-		go func() {
-			wg.Wait()
-		}()
-
-		assertInvalidAmountRequestAccepeted(t, capacity, int(allowedCount))
-	})
+	}
+	isAllowed, err := ntb.Allow(ctx, key, store, cfg)
+	assertInvalidAmountRequestAccepeted(t, capacity, allowedCount)
+	assertError(t, err)
+	assertInvalidRequestAccepted(t, isAllowed)
+	assertInvalidTokenValue(t, store, key, ctx, capacity)
 }
 
-func TestRefillLogic(t *testing.T) {
-	capacity, rate := 20, 5
+func testConcurrentBurstRequests(t *testing.T, store ratelimiter.Store) {
+	clock := &FakeClock{currentTime: time.Now()}
+	capacity, rate := 100, 10
 	cfg := ratelimiter.Config{
 		Capacity: float64(capacity),
 		Rate:     float64(rate),
 	}
+	ntb := NewTokenBucket(clock)
+	ctx := context.Background()
+	key := "test_concurrent"
 
-	t.Run("tokenbucket_should_refill_at_rate_per_second", func(t *testing.T) {
-		clock := FakeClock{currentTime: time.Now()}
-		ntb := NewTokenBucket(&clock)
-		ctx := context.Background()
-		store := memory.NewInMemoryStore()
-		key := "test_1s_delay"
-		allowedCount := 0
-		// drain all the current tokens
-		for i := 1; i <= capacity; i++ {
+	totalRequests := capacity * 10
+	var allowedCount int32
+	var wg sync.WaitGroup
+
+	wg.Add(totalRequests)
+
+	for i := 1; i <= totalRequests; i++ {
+		go func() {
+			defer wg.Done()
 			isAllowed, err := ntb.Allow(ctx, key, store, cfg)
-			assertErrAccessingLocalMemory(t, err)
+			assertError(t, err)
 			if isAllowed {
-				allowedCount++
+				atomic.AddInt32(&allowedCount, 1)
 			}
-		}
-		assertInvalidAmountRequestAccepeted(t, capacity, allowedCount)
+		}()
+	}
 
-		// simulate a 1s delay
-		clock.Add(time.Second)
-
-		// rate amount of requests should get accepted
-		allowedCount = 0
-		for i := 1; i <= rate; i++ {
-			isAllowed, err := ntb.Allow(ctx, key, store, cfg)
-			assertErrAccessingLocalMemory(t, err)
-			if isAllowed {
-				allowedCount++
-			}
-		}
-		assertInvalidAmountRequestAccepeted(t, rate, allowedCount)
-	})
-
-	t.Run("tokenbucket_should_be_refilled_completely_after_certain_time", func(t *testing.T) {
-		clock := FakeClock{currentTime: time.Now()}
-		ntb := NewTokenBucket(&clock)
-		ctx := context.Background()
-		store := memory.NewInMemoryStore()
-		key := "test_complete_refill"
-
-		// drain all the tokens
-		for i := 1; i <= capacity; i++ {
-			_, err := ntb.Allow(ctx, key, store, cfg)
-			assertErrAccessingLocalMemory(t, err)
-		}
-
-		// wait for the bucket to refilled completely
-		timeToRefill := time.Duration(capacity / rate)
-		timeToRefill = timeToRefill * 10
-		clock.Add(timeToRefill * time.Second)
-
-		// should be able to process capacity requests only
-		allowedCount := 0
-		for i := 1; i <= capacity+10; i++ {
-			isAllowed, err := ntb.Allow(ctx, key, store, cfg)
-			assertErrAccessingLocalMemory(t, err)
-			if isAllowed {
-				allowedCount++
-			}
-		}
-
-		assertInvalidAmountRequestAccepeted(t, capacity, allowedCount)
-	})
+	wg.Wait()
+	assertInvalidTokenValue(t, store, key, ctx, capacity)
+	assertInvalidAmountRequestAccepeted(t, capacity, int(allowedCount))
 }
 
-func assertInvalidTokenValue(t testing.TB, store ratelimiter.Store, key string, ctx context.Context, capacity int) {
+func testRefillLogic(t *testing.T, store ratelimiter.Store) {
+	capacity, rate := 20, 5
+	clock := &FakeClock{currentTime: time.Now()}
+	cfg := ratelimiter.Config{
+		Capacity: float64(capacity),
+		Rate:     float64(rate),
+	}
+	ctx := context.Background()
+	ntb := NewTokenBucket(clock)
+	key := "test_refill"
+
+	allowedCount := 0
+	// drain all the tokens
+	for i := 1; i <= capacity; i++ {
+		isAllowed, err := ntb.Allow(ctx, key, store, cfg)
+		assertError(t, err)
+		if isAllowed {
+			allowedCount++
+		}
+	}
+	assertInvalidTokenValue(t, store, key, ctx, capacity)
+	assertInvalidAmountRequestAccepeted(t, capacity, allowedCount)
+
+	// simulate 1 second time delay
+	// bucket should now have rate tokens
+	clock.Add(1 * time.Second)
+	assertInvalidTokenValue(t, store, key, ctx, rate)
+	allowedCount = 0
+	for i := 1; i <= rate; i++ {
+		isAllowed, err := ntb.Allow(ctx, key, store, cfg)
+		assertError(t, err)
+		if isAllowed {
+			allowedCount++
+		}
+	}
+	assertInvalidAmountRequestAccepeted(t, rate, allowedCount)
+
+	// wait for a long time to check if the bucket gets filled
+	clock.Add(time.Second * 100)
+	assertInvalidTokenValue(t, store, key, ctx, capacity)
+}
+
+func assertInvalidTokenValue(t testing.TB, store ratelimiter.Store, key string, ctx context.Context, maxTokenValue int) {
 	t.Helper()
 	state, _, _ := store.Get(ctx, key)
-	if state.Tokens < 0 || state.Tokens > float64(capacity) {
+	if state.Tokens < 0 || state.Tokens > float64(maxTokenValue) {
 		t.Errorf("invalid token value: %v", state.Tokens)
 	}
 }
@@ -173,7 +190,7 @@ func assertInvalidAmountRequestAccepeted(t testing.TB, want, got int) {
 	}
 }
 
-func assertErrAccessingLocalMemory(t testing.TB, err error) {
+func assertError(t testing.TB, err error) {
 	t.Helper()
 	if err != nil {
 		t.Fatalf("unexpected error occured: %v", err)
@@ -185,4 +202,14 @@ func assertInvalidRequestAccepted(t testing.TB, isAllowed bool) {
 	if isAllowed {
 		t.Errorf("request should have been rejected but got accepted")
 	}
+}
+
+func printStore(ctx context.Context, store ratelimiter.Store, key string) {
+	state, found, _ := store.Get(ctx, key)
+	if !found {
+		fmt.Println("the value for the ", key, " is not present")
+		return
+	}
+	fmt.Println("the number of tokens: ", state.Tokens)
+	fmt.Println("the last refill time: ", state.LastRequestTime.Format("2006-01-02 15:04:05"))
 }

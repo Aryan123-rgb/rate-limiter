@@ -2,6 +2,7 @@ package tokenbucket
 
 import (
 	"context"
+	"fmt"
 	"math"
 
 	ratelimiter "github.com/Aryan123-rgb/rate-limiter"
@@ -21,7 +22,7 @@ func (tb *TokenBucket) Allow(ctx context.Context, key string, store ratelimiter.
 	// acquire the lock 
 	unlock, err := store.AcquireLock(ctx, key)
 	if err != nil {
-		return false, nil 
+		return false, fmt.Errorf("error acquiring the lock : %v", err) 
 	}
 	defer unlock()
 
@@ -30,7 +31,7 @@ func (tb *TokenBucket) Allow(ctx context.Context, key string, store ratelimiter.
 	// Step 1: retrieve the current token count from the store
 	state, found, err := store.Get(ctx, key)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("err retrieveing the state, state: %v\n, error: %v", state, err)
 	}
 
 	// if the user is new, initialise the bucket
@@ -59,7 +60,7 @@ func (tb *TokenBucket) Allow(ctx context.Context, key string, store ratelimiter.
 	err = store.Set(ctx, key, state)
 	if err != nil {
 		// if storage is down, we fail closed
-		return false, err 
+		return false, fmt.Errorf("error occured while trying to update the state: %v", err)
 	}
 	return allowed, nil 
 }

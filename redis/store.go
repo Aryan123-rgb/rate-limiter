@@ -1,4 +1,4 @@
-package redis
+package redisStore
 
 import (
 	"context"
@@ -34,6 +34,8 @@ func (r *RedisStore) Get(ctx context.Context, key string) (ratelimiter.State, bo
 		return ratelimiter.State{}, false, err
 	}
 
+	// fmt.Printf("RAW REDIS VALUE (%q): %q\n", redisKey, val)
+
 	var state ratelimiter.State
 	err = json.Unmarshal([]byte(val), &state)
 	if err != nil {
@@ -48,7 +50,7 @@ func (r *RedisStore) Set(ctx context.Context, key string, state ratelimiter.Stat
 
 	data, err := json.Marshal(state)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to marshal state: %w", err)
 	}
 	err = r.client.Set(ctx, redisKey, data, time.Hour).Err()
 	return err
@@ -56,12 +58,12 @@ func (r *RedisStore) Set(ctx context.Context, key string, state ratelimiter.Stat
 
 // AcquireLock implements a distrbuted spin lock
 func (r *RedisStore) AcquireLock(ctx context.Context, key string) (func(), error) {
-	lockKey := fmt.Sprintf("limiter:%s", key)
+	lockKey := fmt.Sprintf("lock:%s", key)
 	// Unique ID for this specific lock instance (to safely unlock later)
 	lockValue := uuid.New().String()
 
 	// How long to wait before giving up (Timeout)
-	timeout := time.After(5 * time.Second)
+	timeout := time.After(30 * time.Second)
 	// How long the lock lasts in Redis if we crash (Safety)
 	ttl := 10 * time.Second
 
@@ -74,7 +76,7 @@ func (r *RedisStore) AcquireLock(ctx context.Context, key string) (func(), error
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		case <-timeout:
-			return nil, fmt.Errorf("could not acquire lock for %v", timeout)
+			return nil, fmt.Errorf("the goroutine timeout before acquiring the lock %v", timeout)
 		case <-ticker.C:
 			// Try to set the lock: SET key value NX PX ttl
 			success, err := r.client.SetNX(ctx, lockKey, lockValue, ttl).Result()
