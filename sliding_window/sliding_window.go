@@ -2,6 +2,7 @@ package slidingwindow
 
 import (
 	"context"
+	"time"
 
 	ratelimiter "github.com/Aryan123-rgb/rate-limiter"
 )
@@ -57,7 +58,7 @@ func (sw *SlidingWindow) Allow(ctx context.Context, key string, store ratelimite
 			// slide the window
 			state.PreviousCount = state.CurrentCount
 			state.CurrentCount = 0
-			state.WindowStart = now
+			state.WindowStart = state.WindowStart.Add(time.Second * time.Duration(cfg.WindowSize))
 		}
 		timeElapsed = now.Sub(state.WindowStart).Seconds()
 	}
