@@ -7,8 +7,39 @@ import (
 
 	ratelimiter "github.com/Aryan123-rgb/rate-limiter"
 	"github.com/Aryan123-rgb/rate-limiter/memory"
+	redisStore "github.com/Aryan123-rgb/rate-limiter/redis"
 	"github.com/Aryan123-rgb/rate-limiter/tokenbucket"
+	"github.com/alicebob/miniredis/v2"
+	"github.com/redis/go-redis/v9"
 )
+
+func TestHTTPMiddleware(t *testing.T) {
+	mr, err := miniredis.Run()
+	assertError(t, err)
+	defer mr.Close()
+
+	redisClient := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	
+	tests := []struct{
+		name string
+		store ratelimiter.Store
+	}{
+		{
+			name: "InMemory",
+			store: memory.NewInMemoryStore(),
+		},
+		{
+			name: "Redis",
+			store: redisStore.NewRedisStore(redisClient),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+
+		})
+	}
+}
 
 func TestTokenBucket(t *testing.T) {
 	// 1. Setup Dependencies
@@ -106,5 +137,12 @@ func TestTokenBucketConcurrency(t *testing.T) {
 	if successCount != 10 {
 		t.Errorf("Race Condition Detected! Expected 10 allowed, but %d got through.", successCount)
 		t.Fail() // Uncomment this to make the test actually fail
+	}
+}
+
+func assertError(t testing.TB, err error) {
+	t.Helper()
+	if err != nil {
+		t.Fatalf("unexpected error occured: %v", err)
 	}
 }

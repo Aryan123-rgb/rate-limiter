@@ -22,7 +22,9 @@ func (tb *TokenBucket) Allow(ctx context.Context, key string, store ratelimiter.
 	// acquire the lock 
 	unlock, err := store.AcquireLock(ctx, key)
 	if err != nil {
-		return false, fmt.Errorf("error acquiring the lock : %v", err) 
+		// too many go-routines are trying to access the same lock
+		// result: request rejected (rate limited). No error
+		return false, nil 
 	}
 	defer unlock()
 

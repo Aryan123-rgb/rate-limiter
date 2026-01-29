@@ -3,6 +3,7 @@ package tokenbucket
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -65,6 +66,10 @@ func TestTokenBucket_Backends(t *testing.T) {
 
 			t.Run("refill_logic", func(t *testing.T) {
 				testRefillLogic(t, tt.store())
+			})
+
+			t.Run("test_multiple_concurrent_users", func(t *testing.T) {
+				testMultipleConcurrentUsers(t, tt.store())
 			})
 		})
 	}
@@ -175,6 +180,39 @@ func testRefillLogic(t *testing.T, store ratelimiter.Store) {
 	assertInvalidTokenValue(t, store, key, ctx, capacity)
 }
 
+func testMultipleConcurrentUsers(t *testing.T, store ratelimiter.Store) {
+	clock := &FakeClock{currentTime: time.Now()}
+	ntb := NewTokenBucket(clock)
+	capacity, rate := 100, 10
+	cfg := ratelimiter.Config{
+		Capacity: float64(capacity),
+		Rate: float64(rate),
+	}
+	ctx := context.Background()
+
+	usersCount := 500
+	keys := generateRandomKeys(usersCount, 4)
+
+	var wg sync.WaitGroup
+	wg.Add(usersCount)
+	var allowedCount int32
+
+	for _, k := range keys {
+		go func(){
+			defer wg.Done()
+			isAllowed, err := ntb.Allow(ctx, k, store, cfg)
+			assertError(t, err)
+			if isAllowed{
+				atomic.AddInt32(&allowedCount,1)
+			}
+		}()
+	}
+
+	wg.Wait()
+
+	assertInvalidAmountRequestAccepeted(t, usersCount, int(allowedCount))
+}
+
 func assertInvalidTokenValue(t testing.TB, store ratelimiter.Store, key string, ctx context.Context, maxTokenValue int) {
 	t.Helper()
 	state, _, _ := store.Get(ctx, key)
@@ -212,4 +250,25 @@ func printStore(ctx context.Context, store ratelimiter.Store, key string) {
 	}
 	fmt.Println("the number of tokens: ", state.Tokens)
 	fmt.Println("the last refill time: ", state.LastRequestTime.Format("2006-01-02 15:04:05"))
+}
+
+func generateRandomKeys(count, length int) []string {
+	letters := "qwertyuiopasdfghjklzxcvbnm1234567890!@#$%^&*()"
+	n := len(letters)
+
+	results := make([]string, 0, count)
+	seen := make(map[string]struct{})
+
+	for len(results) < count {
+		b := make([]byte, length)
+		for i := 0; i < length; i++ {
+			b[i] = letters[rand.Intn(n)]
+		}
+		str := string(b)
+		if _, exists := seen[str]; !exists {
+			seen[str] = struct{}{}
+			results = append(results, str)
+		}
+	}
+	return results
 }

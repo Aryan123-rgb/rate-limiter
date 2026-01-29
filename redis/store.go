@@ -22,8 +22,7 @@ func NewRedisStore(client *redis.Client) *RedisStore {
 
 // Get retrieves the state from redis
 func (r *RedisStore) Get(ctx context.Context, key string) (ratelimiter.State, bool, error) {
-	// key -> user_123; redisKey -> limiter:user_123
-	redisKey := fmt.Sprintf("limiter:%s", key)
+	redisKey := fmt.Sprintf("user_request_id:%s", key)
 
 	val, err := r.client.Get(ctx, redisKey).Result()
 	if errors.Is(err, redis.Nil) {
@@ -46,7 +45,7 @@ func (r *RedisStore) Get(ctx context.Context, key string) (ratelimiter.State, bo
 
 // Set saves the state to redis
 func (r *RedisStore) Set(ctx context.Context, key string, state ratelimiter.State) error {
-	redisKey := fmt.Sprintf("limiter:%s", key)
+	redisKey := fmt.Sprintf("user_request_id:%s", key)
 
 	data, err := json.Marshal(state)
 	if err != nil {
@@ -58,14 +57,14 @@ func (r *RedisStore) Set(ctx context.Context, key string, state ratelimiter.Stat
 
 // AcquireLock implements a distrbuted spin lock
 func (r *RedisStore) AcquireLock(ctx context.Context, key string) (func(), error) {
-	lockKey := fmt.Sprintf("lock:%s", key)
+	lockKey := fmt.Sprintf("user_lock:%s", key)
 	// Unique ID for this specific lock instance (to safely unlock later)
 	lockValue := uuid.New().String()
 
 	// How long to wait before giving up (Timeout)
-	timeout := time.After(30 * time.Second)
+	timeout := time.After(10 * time.Second)
 	// How long the lock lasts in Redis if we crash (Safety)
-	ttl := 10 * time.Second
+	ttl := 2 * time.Second
 
 	// SPIN LOOP
 	ticker := time.NewTicker(10 * time.Millisecond)

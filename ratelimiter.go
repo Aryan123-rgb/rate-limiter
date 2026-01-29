@@ -7,7 +7,7 @@ import (
 
 // created for testing purposes
 type Clock interface {
-	Now() time.Time 
+	Now() time.Time
 }
 
 type RealClock struct{}
@@ -17,13 +17,24 @@ func (c RealClock) Now() time.Time {
 }
 
 type Config struct {
+	// Token Bucket Fields
 	Rate     float64 // how many tokens are added per second
 	Capacity float64 // maximum burst allowed
+
+	// Sliding Window Fields
+	WindowSize       float64 // In seconds
+	RequestPerWindow float64
 }
 
 type State struct {
+	// Token Bucket Fields
 	Tokens          float64
 	LastRequestTime time.Time
+
+	// Sliding Window Fields
+	PreviousCount float64
+	CurrentCount  float64
+	WindowStart   time.Time
 }
 
 type Store interface {
