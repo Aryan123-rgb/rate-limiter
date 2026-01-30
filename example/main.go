@@ -5,9 +5,9 @@ import (
 	"net/http"
 
 	ratelimiter "github.com/Aryan123-rgb/rate-limiter"
-	"github.com/Aryan123-rgb/rate-limiter/memory"
-	"github.com/Aryan123-rgb/rate-limiter/middleware/http"
-	"github.com/Aryan123-rgb/rate-limiter/tokenbucket"
+	"github.com/Aryan123-rgb/rate-limiter/algorithms/tokenbucket"
+	httpMiddleware "github.com/Aryan123-rgb/rate-limiter/middleware/http"
+	"github.com/Aryan123-rgb/rate-limiter/storage/memory"
 )
 
 func main() {
@@ -31,7 +31,7 @@ func main() {
 	}
 
 	// 3. create the rate limiter middleware
-	limiterMiddleWare := middleware.RateLimit(algorithm, memStore, config, keyExtractor)
+	limiterMiddleWare := httpMiddleware.RateLimit(algorithm, memStore, config, keyExtractor)
 
 	// implement a simple server with a simple handler
 	mux := http.NewServeMux()

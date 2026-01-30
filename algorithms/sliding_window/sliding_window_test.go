@@ -8,8 +8,8 @@ import (
 	"time"
 
 	ratelimiter "github.com/Aryan123-rgb/rate-limiter"
-	"github.com/Aryan123-rgb/rate-limiter/memory"
-	redisStore "github.com/Aryan123-rgb/rate-limiter/redis"
+	"github.com/Aryan123-rgb/rate-limiter/storage/memory"
+	redisStore "github.com/Aryan123-rgb/rate-limiter/storage/redis"
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
 )
