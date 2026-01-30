@@ -1,46 +1,12 @@
 package main
 
-import (
-	"fmt"
-	"net/http"
-
-	ratelimiter "github.com/Aryan123-rgb/rate-limiter"
-	"github.com/Aryan123-rgb/rate-limiter/algorithms/tokenbucket"
-	httpMiddleware "github.com/Aryan123-rgb/rate-limiter/middleware/http"
-	"github.com/Aryan123-rgb/rate-limiter/storage/memory"
-)
-
 func main() {
-	// 1. Setup Dependancies
-	// storage: in memory store
-	memStore := memory.NewInMemoryStore()
+	// create http server using std library
+	CreateHTTPServer()
 
-	// algorithm: token bucket
-	algorithm := tokenbucket.NewTokenBucket(ratelimiter.RealClock{})
+	// create the http server using fiber framework
+	CreateFiberServer()
 
-	// config: 5 request/second, burst of 10
-	config := ratelimiter.Config{
-		Rate: 5,
-		Capacity: 10,
-	}
-
-	// 2. Define how to identify user
-	// using ip address
-	keyExtractor := func(r *http.Request) string {
-		return r.RemoteAddr
-	}
-
-	// 3. create the rate limiter middleware
-	limiterMiddleWare := httpMiddleware.RateLimit(algorithm, memStore, config, keyExtractor)
-
-	// implement a simple server with a simple handler
-	mux := http.NewServeMux()
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("Success!"))
-	})
-
-	mux.Handle("/", limiterMiddleWare(handler))
-
-	fmt.Println("Server running on :8080")
-	http.ListenAndServe(":8080", mux)
+	// create http server using echo framework
+	CreateEchoServer()
 }

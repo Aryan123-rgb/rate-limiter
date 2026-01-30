@@ -2,21 +2,22 @@ package main
 
 import (
 	"fmt"
-	"log"
+	"net/http"
 
 	ratelimiter "github.com/Aryan123-rgb/rate-limiter"
 	"github.com/Aryan123-rgb/rate-limiter/algorithms/tokenbucket"
-	fiberMiddleware "github.com/Aryan123-rgb/rate-limiter/middleware/fiber"
+	echoMiddleware "github.com/Aryan123-rgb/rate-limiter/middleware/echo"
 	redisStore "github.com/Aryan123-rgb/rate-limiter/storage/redis"
-	"github.com/gofiber/fiber/v2"
+	"github.com/labstack/echo/v4"
 	"github.com/redis/go-redis/v9"
 )
 
-func CreateFiberServer() {
+func CreateEchoServer() {
 	// set up redis client
 	redisClient := redis.NewClient(&redis.Options{
 		Addr: "localhost:6379",
 	})
+	defer redisClient.Close()
 
 	// storage use either redisStore for using redis db
 	// or memory for using in-memory storage
@@ -35,24 +36,27 @@ func CreateFiberServer() {
 	tb := tokenbucket.NewTokenBucket(ratelimiter.RealClock{})
 	// sw := slidingwindow.NewSlidingWindow(ratelimiter.RealClock{})
 
-	app := fiber.New()
-
-	limiter := fiberMiddleware.RateLimitMiddleware(tb, redisDb, cfg, func(c *fiber.Ctx) string {
-		return c.IP()
+	// middleware
+	mw := echoMiddleware.RateLimitMiddleware(tb, redisDb, cfg, func(c echo.Context) string {
+		return c.RealIP()
 	})
 
-	// apply only to routes starting with /api
-	api := app.Group("/api", limiter)
-	api.Get("/hello", func (c *fiber.Ctx) error {
-		return c.SendString("hello from redis backed server")
+	app := echo.New()
+
+	// apply to just one route, pass it as the middle argument:
+	// app.GET("/admin", adminHandler, mw)
+
+	// apply to group specific routues
+	// api := app.Group("/api")
+	// api.Use(mw)
+
+	// Apply middleware globally
+	app.Use(mw)
+
+	app.GET("/", func(c echo.Context) error {
+		return c.String(http.StatusOK, "Sliding Window says OK!")
 	})
 
-	// Apply to every single request on the server
-	// app.Use(limiter)
-
-	// --- VARIATION 3: Single Route ---
-	// app.Get("/single", limiter, func(c *fiber.Ctx) error { ... })
-
-	fmt.Println("Fiber (Redis) running on :8000")
-	log.Fatal(app.Listen(":8000"))
+	fmt.Println("Echo (Sliding Window) running on :4000")
+	app.Logger.Fatal(app.Start(":4000"))
 }

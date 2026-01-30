@@ -2,17 +2,16 @@ package main
 
 import (
 	"fmt"
-	"log"
+	"net/http"
 
 	ratelimiter "github.com/Aryan123-rgb/rate-limiter"
 	"github.com/Aryan123-rgb/rate-limiter/algorithms/tokenbucket"
-	fiberMiddleware "github.com/Aryan123-rgb/rate-limiter/middleware/fiber"
+	httpMiddleware "github.com/Aryan123-rgb/rate-limiter/middleware/http"
 	redisStore "github.com/Aryan123-rgb/rate-limiter/storage/redis"
-	"github.com/gofiber/fiber/v2"
 	"github.com/redis/go-redis/v9"
 )
 
-func CreateFiberServer() {
+func CreateHTTPServer() {
 	// set up redis client
 	redisClient := redis.NewClient(&redis.Options{
 		Addr: "localhost:6379",
@@ -35,24 +34,23 @@ func CreateFiberServer() {
 	tb := tokenbucket.NewTokenBucket(ratelimiter.RealClock{})
 	// sw := slidingwindow.NewSlidingWindow(ratelimiter.RealClock{})
 
-	app := fiber.New()
-
-	limiter := fiberMiddleware.RateLimitMiddleware(tb, redisDb, cfg, func(c *fiber.Ctx) string {
-		return c.IP()
+	middleware := httpMiddleware.RateLimit(tb, redisDb, cfg, func(r *http.Request) string {
+		return r.RemoteAddr
 	})
 
-	// apply only to routes starting with /api
-	api := app.Group("/api", limiter)
-	api.Get("/hello", func (c *fiber.Ctx) error {
-		return c.SendString("hello from redis backed server")
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("success"))
 	})
 
-	// Apply to every single request on the server
-	// app.Use(limiter)
+	app := http.NewServeMux()
 
-	// --- VARIATION 3: Single Route ---
-	// app.Get("/single", limiter, func(c *fiber.Ctx) error { ... })
+	// route specific middleware
+	app.Handle("/api", middleware(handler))
 
-	fmt.Println("Fiber (Redis) running on :8000")
-	log.Fatal(app.Listen(":8000"))
+	// To protect the ENTIRE server, wrap the mux itself:
+	// http.ListenAndServe(":8080", middleware(app))
+
+
+	fmt.Println("Server running on :8080")
+	http.ListenAndServe(":8080", app)
 }
