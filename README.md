@@ -1,4 +1,4 @@
-# 🛡️ Sentry
+# 🛡️ FlowGuard
 
 A high-performance, thread-safe, and distributed rate limiter library for Go. Designed with **Clean Architecture** principles, it decouples rate-limiting algorithms from storage backends, making it highly extensible and easy to mock for testing.
 
@@ -76,7 +76,7 @@ go get github.com/Aryan123-rgb/rate-limiter
 
 ## 🆚 Comparison
 
-| Feature | **Sentry** | `golang.org/x/time/rate` | `ulule/limiter` |
+| Feature | **FlowGuard** | `golang.org/x/time/rate` | `ulule/limiter` |
 | :--- | :---: | :---: | :---: |
 | **Algorithms** | Token Bucket, Sliding Window | Token Bucket Only | Token Bucket, Leaky Bucket |
 | **Storage** | Memory, Redis (Distributed) | Memory Only | Memory, Redis, Consul, etc. |
