@@ -1,4 +1,4 @@
-# 🛡️ Go Rate Limiter
+# 🛡️ Sentry
 
 A high-performance, thread-safe, and distributed rate limiter library for Go. Designed with **Clean Architecture** principles, it decouples rate-limiting algorithms from storage backends, making it highly extensible and easy to mock for testing.
 
@@ -73,6 +73,23 @@ rate-limiter/
 ```bash
 go get github.com/Aryan123-rgb/rate-limiter
 ```
+
+## 🆚 Comparison
+
+| Feature | **Sentry** | `golang.org/x/time/rate` | `ulule/limiter` |
+| :--- | :---: | :---: | :---: |
+| **Algorithms** | Token Bucket, Sliding Window | Token Bucket Only | Token Bucket, Leaky Bucket |
+| **Storage** | Memory, Redis (Distributed) | Memory Only | Memory, Redis, Consul, etc. |
+| **Distributed Locks** | ✅ Yes (Atomic Spin-Lock) | ❌ No | ✅ Yes |
+| **Middleware** | HTTP, Fiber, Echo | ❌ Manual Implementation | HTTP, Gin, Echo, Fiber |
+| **Architecture** | **Interface-Based (Plug-and-Play)** | Struct-Based | Struct-Based |
+| **Complexity** | Low (Simple Config) | Low | High (Complex Config) |
+
+**Why choose this library?**
+* **Simplicity:** You don't need a PhD in config files to set it up.
+* **Extensibility:** Want to add Postgres? Just implement the `Store` interface. Want a new algorithm? Implement the `Strategy` interface.
+* **Clean Code:** Built strictly following SOLID principles, making it easier to read and maintain than older, bloated libraries.
+
 
 ## ⚡ Quick Start (Standard Library)
 
