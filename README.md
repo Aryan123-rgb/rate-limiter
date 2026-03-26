@@ -1,6 +1,6 @@
 # 🛡️ FlowGuard
 
-A high-performance, thread-safe, and distributed rate limiter library for Go. Designed with **Clean Architecture** principles, it decouples rate-limiting algorithms from storage backends, making it highly extensible and easy to mock for testing.
+A rate limiter library for Go. Designed with **Clean Architecture** principles, it decouples rate-limiting algorithms from storage backends, making it extensible and easy to mock for testing.
 
 Suitable for single-instance applications (In-Memory) and distributed microservices (Redis).
 
@@ -49,7 +49,7 @@ graph TD
 ## 📂 Project Structure
 
 ```text
-rate-limiter/
+flowguard/
 ├── algorithms/           # Rate limiting logic (Strategies)
 │   ├── tokenbucket/      # Token Bucket implementation
 │   └── slidingwindow/    # Sliding Window implementation
@@ -71,7 +71,7 @@ rate-limiter/
 ## 📦 Installation
 
 ```bash
-go get github.com/Aryan123-rgb/rate-limiter
+go get github.com/Adistroaryan/flowguard
 ```
 
 ## 🆚 Comparison
